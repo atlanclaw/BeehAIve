@@ -1,0 +1,87 @@
+# L1 PKB: Standalone Docker Compose
+# This file allows L1 to be tested independently: docker compose up
+# Includes only Qdrant, Ollama, and the PKB API
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: pkb-qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pkb-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+          cpus: "2.0"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  pkb-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pkb-api
+    ports:
+      - "${PKB_API_PORT:-8000}:8000"
+    volumes:
+      - ./data/documents:/app/data/documents
+      - ../obsidian-vault:/app/obsidian-vault
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OBSIDIAN_VAULT_PATH=/app/obsidian-vault
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  qdrant_data:
+    driver: local
+  ollama_data:
+    driver: local
