@@ -1,0 +1,60 @@
+# advisory only — kein Enforcement durch Laufzeit
+hardware:
+  cpu: "AMD AI350"
+  ram_gb: 32
+  storage_nvme_gb: 512
+  igpu: "AMD Radeon 890M (RDNA 3.5)"
+  os: "Linux (Ubuntu 22.04 / Arch)"
+
+runtime_limits:
+  max_model_params_b: 8
+  recommended_quant: "Q4_K_M"
+  max_quant: "Q8_0"
+  embedding_batch_size: 32
+  embedding_model: "nomic-embed-text"
+  embedding_vector_size: 768
+
+cost_classes:
+  free_local:
+    example: "ollama/llama3.1:8b-q4"
+    privacy: "full"
+    cost_per_1k_tokens: 0.0
+  cheap_cloud:
+    example: "openrouter/mistral-7b-instruct"
+    privacy: "cloud"
+    cost_per_1k_tokens: 0.0002
+  quality_cloud:
+    example: "openrouter/claude-3-5-sonnet"
+    privacy: "cloud"
+    cost_per_1k_tokens: 0.003
+
+advisory_storage_budget_gb:
+  qdrant_data: 10
+  embedding_cache: 5
+  vault_content: 20
+  model_cache: 30
+  buffer: 5
+  # total advisory: ~70 GB — kein Enforcement
+
+# advisory only — kein Enforcement durch LH, wird von L0 gelesen
+runtime_budget_advisory:
+  total_available_ram_gb: 24    # 32 GB - 4 iGPU - 4 OS
+  system_reserve_gb: 4          # immer frei: OS-Cache, Kernel, iGPU-Burst
+  burst_pool_gb: 20             # maximales RAM für eine aktive Pipeline-Stage
+  idle_budget_total_gb: 2       # alle Dienste zusammen im Idle-Modus
+  ssd_total_gb: 200             # NVMe-Budget gesamt
+
+  # Advisory SSD-Verteilung (kein Enforcement)
+  ssd_advisory_gb:
+    qdrant_data: 40
+    snapshots: 20
+    vault: 30
+    logs: 10
+    memory: 2
+    assets: 20
+    offload: 15       # Staging vor Nextcloud
+    ollama_models: 30 # Modell-Gewichte mehrere Modelle
+    n8n: 5
+    langfuse: 10
+    os_reserve: 18    # OS, Swap-Partition, Docker
+    # total: 200 GB

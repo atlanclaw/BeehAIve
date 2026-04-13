@@ -1,0 +1,2 @@
+# WAL-Verzeichnis — wird zur Laufzeit mit Einträgen befüllt.
+# Inhalt ist in .gitignore ausgenommen.

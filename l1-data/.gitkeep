@@ -1,0 +1,2 @@
+# L1: Qdrant-Schema, Vault, WAL, Obsidian-Config
+# Verzeichnisse werden beim ersten docker compose up angelegt.
