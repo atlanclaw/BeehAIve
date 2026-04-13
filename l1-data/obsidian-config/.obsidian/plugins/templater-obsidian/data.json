@@ -1,0 +1,6 @@
+{
+  "template_folder": "00-admin/templates",
+  "auto_jump_to_cursor": true,
+  "trigger_on_file_creation": true,
+  "enable_system_commands": false
+}

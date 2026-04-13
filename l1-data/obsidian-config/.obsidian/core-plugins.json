@@ -1,0 +1,11 @@
+{
+  "file-explorer": true,
+  "global-search": true,
+  "backlink": true,
+  "tag-pane": true,
+  "templates": true,
+  "daily-notes": false,
+  "graph": true,
+  "starred": true,
+  "outline": true
+}

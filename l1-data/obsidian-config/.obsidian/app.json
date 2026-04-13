@@ -1,0 +1,12 @@
+{
+  "legacyEditor": false,
+  "livePreview": true,
+  "defaultViewMode": "preview",
+  "attachmentFolderPath": "50-inbox/attachments",
+  "newFileLocation": "folder",
+  "newFileFolderPath": "50-inbox",
+  "useMarkdownLinks": true,
+  "strictLineBreaks": false,
+  "showLineNumber": true,
+  "spellcheck": false
+}
