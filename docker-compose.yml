@@ -1,0 +1,281 @@
+version: "3.9"
+
+networks:
+  pkb-internal:
+    internal: true
+  pkb-orchestration:
+    internal: true
+  pkb-external:
+    driver: bridge
+
+volumes:
+  qdrant-data:
+  n8n-data:
+
+services:
+  # --- L1: Qdrant Vektordatenbank ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "${QDRANT_PORT:-1081}:1337"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - pkb-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # --- L4: Langfuse Observability (MUSS vor pkb-beeai healthy sein) ---
+  langfuse-web:
+    image: langfuse/langfuse:3
+    ports:
+      - "${LANGFUSE_PORT:-1084}:7777"
+    networks:
+      - pkb-internal
+    environment:
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-random-secret-32chars}
+      - SALT=${LANGFUSE_SALT:-change-me-random-salt-32chars}
+      - ENCRYPTION_KEY=${LANGFUSE_SECRET_KEY}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:1084}
+      - TELEMETRY_ENABLED=false
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=false
+      - DATABASE_URL=${DATABASE_URL:-postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7777/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # --- L0: Resource Manager (privilegierter Sidecar) ---
+  pkb-resource-manager:
+    build: ./l0-platform
+    container_name: pkb-resource-manager
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ./config:/app/config:ro
+    privileged: false
+    cap_add:
+      - SYS_PTRACE
+    networks:
+      - pkb-internal
+    environment:
+      RESOURCE_BUDGETS_CONFIG: /app/config/resource-budgets.yaml
+    deploy:
+      resources:
+        limits:
+          memory: ${mem_hard_resmanager_L0:-256m}
+        reservations:
+          memory: ${mem_soft_resmanager_L0:-64m}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── L2: Ingestion Service ──────────────────────────────────────────────────
+  pkb-ingestion:
+    build:
+      context: ./l2-ingestion
+    container_name: pkb-ingestion
+    ports:
+      - "${INGESTION_PORT:-3692}:3692"
+    networks:
+      - pkb-internal
+      - pkb-orchestration
+    volumes:
+      - ./l1-data/vault:/srv/pkb/vault:ro
+      - ./l1-data/qdrant:/srv/pkb/memory:ro
+      - ./config:/app/config:ro
+      - ./wal:/srv/pkb/wal
+    environment:
+      QDRANT_URL: http://qdrant:1337
+      TOON_URL: ${TOON_URL:-http://pkb-toon:8080}
+      PKB_ROOT: /srv/pkb
+      PIPELINE_STAGES_CONFIG: /app/config/pipeline-stages.yaml
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:4318
+      OTEL_SERVICE_NAME: pkb-ingestion
+      SERVICE_VERSION: ${SERVICE_VERSION:-0.1.0}
+      OTEL_SAMPLE_RATE: ${OTEL_SAMPLE_RATE:-1.0}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3692/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${mem_hard_ingestion_L2:-256m}
+          cpus: "${cpu_hard_ingestion_L2:-0.2}"
+        reservations:
+          memory: ${mem_soft_ingestion_L2:-64m}
+    restart: unless-stopped
+
+  # ── L3: BeeAI Agent ───────────────────────────────────────────────────────
+  pkb-beeai:
+    build:
+      context: ./pkb
+      dockerfile: Dockerfile.beeai
+    container_name: pkb-beeai
+    ports:
+      - "${BEEAI_PORT:-4713}:4713"
+    networks:
+      - pkb-internal
+      - pkb-orchestration
+    volumes:
+      - ./l1-data/qdrant:/srv/pkb/memory:ro
+      - ./config:/app/config:ro
+      - ./wal:/srv/pkb/wal
+    environment:
+      QDRANT_URL: http://qdrant:1337
+      BEE_LLM: ${BEE_LLM:-qwen2.5:3b}
+      BEE_MEMORY_TYPE: ${BEE_MEMORY_TYPE:-UnconstrainedMemory}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: http://langfuse-web:7777
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:4318
+      OTEL_SERVICE_NAME: pkb-beeai
+      PKB_ROOT: /srv/pkb
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4713/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: ${mem_hard_beeai_L3:-128m}
+          cpus: "${cpu_hard_beeai_L3:-0.1}"
+        reservations:
+          memory: ${mem_soft_beeai_L3:-64m}
+    restart: unless-stopped
+
+  # ── L3: Dispatcher ────────────────────────────────────────────────────────
+  l3-dispatcher:
+    build:
+      context: ./pkb
+      dockerfile: Dockerfile.dispatcher
+    container_name: l3-dispatcher
+    ports:
+      - "${DISPATCHER_PORT:-3693}:3693"
+    networks:
+      - pkb-external
+      - pkb-orchestration
+    volumes:
+      - ./config:/app/config:ro
+      - ./wal:/srv/pkb/wal
+    environment:
+      BEEAI_ENDPOINT: http://pkb-beeai:4713
+      PKB_ROOT: /srv/pkb
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:4318
+      OTEL_SERVICE_NAME: pkb-dispatcher
+    depends_on:
+      pkb-beeai:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3693/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${mem_hard_dispatcher_L3:-128m}
+          cpus: "${cpu_hard_dispatcher_L3:-0.1}"
+        reservations:
+          memory: ${mem_soft_dispatcher_L3:-64m}
+    restart: unless-stopped
+
+  # ── L6: Gateway (Telegram-Tor) ────────────────────────────────────────────
+  pkb-gateway:
+    build:
+      context: ./pkb
+      dockerfile: Dockerfile.gateway
+    container_name: pkb-gateway
+    ports:
+      - "${GATEWAY_PORT:-7777}:7777"
+    networks:
+      - pkb-internal
+      - pkb-orchestration
+      - pkb-external
+    volumes:
+      - ./config:/app/config:ro
+      - ./wal:/srv/pkb/wal
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      DISPATCHER_ENDPOINT: http://l3-dispatcher:3693
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_IDS: ${TELEGRAM_ALLOWED_IDS}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:4318
+      OTEL_SERVICE_NAME: pkb-gateway
+      PKB_ROOT: /srv/pkb
+    depends_on:
+      l3-dispatcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7777/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    cap_add:
+      - SYS_PTRACE
+    deploy:
+      resources:
+        limits:
+          memory: ${mem_hard_gateway_L6:-128m}
+          cpus: "${cpu_hard_gateway_L6:-0.1}"
+        reservations:
+          memory: ${mem_soft_gateway_L6:-64m}
+    restart: unless-stopped
+
+  # ── L6: Auditor (read-only, kein LLM) ────────────────────────────────────
+  pkb-auditor:
+    build:
+      context: ./pkb
+      dockerfile: Dockerfile.auditor
+    container_name: pkb-auditor
+    networks:
+      - pkb-internal
+      - pkb-orchestration
+    volumes:
+      - ./wal:/srv/pkb/wal:ro
+      - ./l1-data/vault:/srv/pkb/vault:ro
+      - ./config:/app/config:ro
+    environment:
+      PKB_ROOT: /srv/pkb
+      AUDITOR_RULES_PATH: /app/config/auditor-rules.yaml
+      OTEL_SERVICE_NAME: pkb-auditor
+    depends_on:
+      - pkb-gateway
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${mem_hard_auditor_L6:-64m}
+          cpus: "${cpu_hard_auditor_L6:-0.05}"
+        reservations:
+          memory: ${mem_soft_auditor_L6:-32m}
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    restart: unless-stopped

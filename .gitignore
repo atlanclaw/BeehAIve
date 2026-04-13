@@ -1,0 +1,47 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+
+# dotenv — NIEMALS echte Keys committen
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+.env.template
+
+# Python
+*.pyc
+__pycache__/
+.venv/
+
+# Backups
+backups/
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
