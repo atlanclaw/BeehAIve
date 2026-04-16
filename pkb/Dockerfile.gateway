@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.gateway.txt .
+RUN pip install --no-cache-dir -r requirements.gateway.txt
+
+COPY gateway/ ./gateway/
+
+EXPOSE 7777
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD curl -f http://localhost:7777/health || exit 1
+
+CMD ["python", "-m", "gateway.main"]
