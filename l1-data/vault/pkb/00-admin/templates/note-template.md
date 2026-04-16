@@ -1,15 +1,11 @@
 ---
-docid: "<% tp.system.prompt('docid (UUID)', crypto.randomUUID()) %>"
-title: "<% tp.file.title %>"
-created_at: "<% tp.date.now('YYYY-MM-DDTHH:mm:ss') %>Z"
-updated_at: "<% tp.date.now('YYYY-MM-DDTHH:mm:ss') %>Z"
+docid: "<UUID-v4>"
+title: ""
+created_at: "<ISO-8601>"
+updated_at: "<ISO-8601>"
 status: "active"
 topics: []
 categories: []
 project_refs: []
 tags: []
 ---
-
-# <% tp.file.title %>
-
-<!-- Notiz-Inhalt hier -->
