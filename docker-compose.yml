@@ -34,7 +34,7 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # --- L4: Langfuse – Postgres (Metadaten) ---
+  # --- L4: Langfuse - Postgres (Metadaten) ---
   langfuse-postgres:
     image: postgres:16-alpine
     environment:
@@ -52,7 +52,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # --- L4: Langfuse – ClickHouse (Traces/Events, Pflicht ab v3) ---
+  # --- L4: Langfuse - ClickHouse (Traces/Events, Pflicht ab v3) ---
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24.12
     environment:
@@ -62,6 +62,7 @@ services:
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
       - langfuse-clickhouse-logs:/var/log/clickhouse-server
+      - ./config/clickhouse/config.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
     networks:
       - pkb-internal
     healthcheck:
@@ -102,7 +103,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 90s
     restart: unless-stopped
 
   # --- L0: Resource Manager (privilegierter Sidecar) ---
@@ -133,7 +134,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── L2: Ingestion Service ──────────────────────────────────────────────────
+  # -- L2: Ingestion Service --
   pkb-ingestion:
     build:
       context: ./l2-ingestion
@@ -174,7 +175,7 @@ services:
           memory: ${mem_soft_ingestion_L2:-64m}
     restart: unless-stopped
 
-  # ── L3: BeeAI Agent ───────────────────────────────────────────────────────
+  # -- L3: BeeAI Agent --
   pkb-beeai:
     build:
       context: ./pkb
@@ -218,7 +219,7 @@ services:
           memory: ${mem_soft_beeai_L3:-64m}
     restart: unless-stopped
 
-  # ── L3: Dispatcher ────────────────────────────────────────────────────────
+  # -- L3: Dispatcher --
   l3-dispatcher:
     build:
       context: ./pkb
@@ -254,7 +255,7 @@ services:
           memory: ${mem_soft_dispatcher_L3:-64m}
     restart: unless-stopped
 
-  # ── L6: Gateway (Telegram-Tor) ────────────────────────────────────────────
+  # -- L6: Gateway (Telegram-Tor) --
   pkb-gateway:
     build:
       context: ./pkb
@@ -297,7 +298,7 @@ services:
           memory: ${mem_soft_gateway_L6:-64m}
     restart: unless-stopped
 
-  # ── L6: Auditor (read-only, kein LLM) ────────────────────────────────────
+  # -- L6: Auditor (read-only, kein LLM) --
   pkb-auditor:
     build:
       context: ./pkb
