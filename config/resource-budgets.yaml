@@ -1,0 +1,54 @@
+# config/resource-budgets.yaml
+# Variablen-Konvention:
+#   idle_ram_<zweck>_<Layer>  = RAM-Limit im Bereitschaftsmodus
+#   idle_cpu_<zweck>_<Layer>  = CPU-Limit im Bereitschaftsmodus
+
+system:
+  total_available_gb: 24          # 32 GB - 4 iGPU - 4 OS
+  system_reserve_gb: 4            # immer frei: OS-Cache, Kernel, iGPU-Burst
+  burst_pool_gb: 20               # für aktive Stage verfügbar (genutzt von L3)
+  idle_budget_total_gb: 2         # alle Dienste zusammen im Idle
+  ssd_total_gb: 200
+
+# ── Idle-Budgets (Bereitschaft, nicht aktiv) ─────────────────
+idle_limits:
+  pkb-qdrant:
+    idle_ram_vectors_L1: "256m"
+    idle_cpu_vectors_L1: "0.1"
+  pkb-ollama:
+    idle_ram_model_L2: "512m"
+    idle_cpu_model_L2: "0.1"
+  pkb-toon:
+    idle_ram_service_L2: "64m"
+    idle_cpu_service_L2: "0.05"
+  pkb-beeai:
+    idle_ram_agent_L3: "128m"
+    idle_cpu_agent_L3: "0.1"
+  pkb-n8n:
+    idle_ram_flows_L3: "128m"
+    idle_cpu_flows_L3: "0.1"
+  pkb-gateway:
+    idle_ram_runtime_L6: "128m"
+    idle_cpu_runtime_L6: "0.1"
+  pkb-langfuse:
+    idle_ram_ui_L4: "128m"
+    idle_cpu_ui_L4: "0.05"
+  pkb-langfuse-db:
+    idle_ram_postgres_L4: "256m"
+    idle_cpu_postgres_L4: "0.1"
+  # Gesamt Idle: ~1.6 GB → ausreichend Puffer zu 2 GB Budget
+
+# ── SSD-Budget ───────────────────────────────────────────────
+ssd_budget:
+  ssd_budget_qdrant_L1: "40g"
+  ssd_budget_snapshots_L1: "20g"
+  ssd_budget_vault_L1: "30g"
+  ssd_budget_logs_L1: "10g"
+  ssd_budget_memory_L1: "2g"
+  ssd_budget_assets_L1: "20g"
+  ssd_budget_offload_L1: "15g"
+  ssd_budget_ollama_L2: "30g"
+  ssd_budget_n8n_L3: "5g"
+  ssd_budget_langfuse_L4: "10g"
+  ssd_budget_os_reserve: "18g"
+  # Gesamt: 200 GB
