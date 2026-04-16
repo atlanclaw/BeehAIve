@@ -19,7 +19,7 @@
         </raft_configuration>
     </keeper_server>
 
-    <!-- Tell ClickHouse to use the built-in keeper instead of ZooKeeper -->
+    <!-- Built-in keeper statt ZooKeeper -->
     <zookeeper>
         <node>
             <host>localhost</host>
@@ -27,7 +27,7 @@
         </node>
     </zookeeper>
 
-    <!-- Cluster definition required by Langfuse ON CLUSTER statements -->
+    <!-- Cluster definition fuer Langfuse ON CLUSTER default -->
     <remote_servers>
         <default>
             <shard>
@@ -39,7 +39,14 @@
         </default>
     </remote_servers>
 
-    <!-- Suppress telemetry -->
+    <!-- Macros fuer ReplicatedMergeTree-Pfade ({shard} und {replica}) -->
+    <macros>
+        <shard>01</shard>
+        <replica>01</replica>
+        <cluster>default</cluster>
+    </macros>
+
+    <!-- Telemetrie deaktivieren -->
     <send_crash_reports>
         <enabled>false</enabled>
     </send_crash_reports>
