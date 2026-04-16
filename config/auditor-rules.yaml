@@ -1,0 +1,34 @@
+# config/auditor-rules.yaml
+# Consumed by: pkb/auditor/main.py (AUDITOR_RULES_PATH)
+# Jede Regel wird in /audit gegen die letzten WAL-Eintraege geprueft.
+
+version: "1"
+
+# --- Eingabe-Validierung ---
+max_query_length: 2000          # Zeichen; laengere Queries erzeugen Violation
+max_response_length: 8000       # Zeichen; laengere Antworten werden geloggt
+
+# --- Rate-Limits (fuer zukuenftige Erweiterung) ---
+max_queries_per_minute: 30
+max_queries_per_hour: 200
+
+# --- Inhaltliche Regeln ---
+forbidden_patterns: []          # Regex-Liste; leer = kein Content-Filter aktiv
+  # Beispiele (auskommentiert):
+  # - "(?i)passwor[dt]"
+  # - "(?i)api[_-]?key"
+
+# --- WAL-Integritaet ---
+wal:
+  max_entry_age_days: 90        # Eintraege aelter als N Tage als stale markieren
+  require_ticket_id: true       # Eintraege ohne ticket_id erzeugen Warning
+  allowed_event_types:
+    - ingestion_complete
+    - query
+    - error
+    - audit
+
+# --- Benachrichtigung (future: Telegram-Alert via Gateway) ---
+alert:
+  on_violation: log             # log | telegram | silent
+  min_severity: warning         # debug | info | warning | error

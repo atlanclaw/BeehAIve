@@ -1,0 +1,49 @@
+# config/pipeline-stages.yaml
+# Consumed by: l2-ingestion (PIPELINE_STAGES_CONFIG)
+# Steuert welche Stages der run_vault_scan-Pipeline aktiv sind und
+# mit welchen Parametern sie laufen.
+
+version: "1"
+
+stages:
+  # L2-01: Vault-Parse
+  parse:
+    enabled: true
+    extensions: [".md", ".txt", ".pdf"]
+    max_file_size_mb: 10
+    skip_patterns:
+      - "**/.obsidian/**"
+      - "**/node_modules/**"
+      - "**/.git/**"
+
+  # L2-02: Chunking
+  chunk:
+    enabled: true
+    strategy: sliding_window      # sliding_window | sentence | paragraph
+    chunk_size: 512               # Tokens
+    chunk_overlap: 64             # Tokens Ueberlapp
+    min_chunk_size: 50            # Chunks kuerzer als dies werden verworfen
+
+  # L2-03: Embedding
+  embed:
+    enabled: true
+    model: nomic-embed-text       # Ollama-Modell
+    batch_size: 32
+    cache_enabled: true
+    cache_ttl_hours: 24
+    timeout_s: 30
+
+  # L2-04: Qdrant Upsert
+  upsert:
+    enabled: true
+    collection: pkb_vault         # Ziel-Collection in Qdrant
+    distance: Cosine
+    vector_size: 768              # nomic-embed-text Output-Dimension
+    on_conflict: overwrite        # overwrite | skip
+    stale_delete: true            # Veraltete Chunks loeschen
+
+# WAL
+wal:
+  write_on_complete: true
+  event_type: ingestion_complete
+  ticket_id: BASE-L2-07
