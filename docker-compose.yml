@@ -11,13 +11,17 @@ networks:
 volumes:
   qdrant-data:
   n8n-data:
+  langfuse-db:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
 
 services:
+
   # --- L1: Qdrant Vektordatenbank ---
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "${QDRANT_PORT:-1081}:1337"
+      - "${QDRANT_PORT:-1081}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant-data:/qdrant/storage
@@ -30,13 +34,55 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # --- L4: Langfuse Observability (MUSS vor pkb-beeai healthy sein) ---
+  # --- L4: Langfuse – Postgres (Metadaten) ---
+  langfuse-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-db:/var/lib/postgresql/data
+    networks:
+      - pkb-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- L4: Langfuse – ClickHouse (Traces/Events, Pflicht ab v3) ---
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    networks:
+      - pkb-internal
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- L4: Langfuse Observability Web (MUSS vor pkb-beeai healthy sein) ---
   langfuse-web:
     image: langfuse/langfuse:3
     ports:
-      - "${LANGFUSE_PORT:-1084}:7777"
+      - "${LANGFUSE_PORT:-1084}:3000"
     networks:
       - pkb-internal
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
     environment:
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-random-secret-32chars}
       - SALT=${LANGFUSE_SALT:-change-me-random-salt-32chars}
@@ -44,12 +90,19 @@ services:
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:1084}
       - TELEMETRY_ENABLED=false
       - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=false
-      - DATABASE_URL=${DATABASE_URL:-postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse}
+      - DATABASE_URL=postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+      - CLICKHOUSE_MIGRATION_URL=clickhouse://langfuse-clickhouse:9000
+      - CLICKHOUSE_URL=http://langfuse-clickhouse:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
+      - LANGFUSE_S3_EVENT_UPLOAD_ENABLED=false
+      - LANGFUSE_INGESTION_QUEUE_PROCESSING_CONCURRENCY=1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7777/api/public/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 60s
     restart: unless-stopped
 
   # --- L0: Resource Manager (privilegierter Sidecar) ---
@@ -96,7 +149,7 @@ services:
       - ./config:/app/config:ro
       - ./wal:/srv/pkb/wal
     environment:
-      QDRANT_URL: http://qdrant:1337
+      QDRANT_URL: http://qdrant:6333
       TOON_URL: ${TOON_URL:-http://pkb-toon:8080}
       PKB_ROOT: /srv/pkb
       PIPELINE_STAGES_CONFIG: /app/config/pipeline-stages.yaml
@@ -137,12 +190,12 @@ services:
       - ./config:/app/config:ro
       - ./wal:/srv/pkb/wal
     environment:
-      QDRANT_URL: http://qdrant:1337
+      QDRANT_URL: http://qdrant:6333
       BEE_LLM: ${BEE_LLM:-qwen2.5:3b}
       BEE_MEMORY_TYPE: ${BEE_MEMORY_TYPE:-UnconstrainedMemory}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
-      LANGFUSE_HOST: http://langfuse-web:7777
+      LANGFUSE_HOST: http://langfuse-web:3000
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:4318
       OTEL_SERVICE_NAME: pkb-beeai
       PKB_ROOT: /srv/pkb
