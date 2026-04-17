@@ -28,10 +28,11 @@ services:
     networks:
       - pkb-internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      test: ["CMD", "/qdrant/qdrant", "--version"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # --- L4: Langfuse - Postgres (Metadaten) ---
@@ -56,8 +57,8 @@ services:
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24.12
     environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: default
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-langfuse}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-beehAIve_atlanclaw}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
     volumes:
       - langfuse-clickhouse-data:/var/lib/clickhouse
@@ -87,14 +88,14 @@ services:
     environment:
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-random-secret-32chars}
       - SALT=${LANGFUSE_SALT:-change-me-random-salt-32chars}
-      - ENCRYPTION_KEY=${LANGFUSE_SECRET_KEY}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:1084}
       - TELEMETRY_ENABLED=false
       - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=false
       - DATABASE_URL=postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
       - CLICKHOUSE_MIGRATION_URL=clickhouse://langfuse-clickhouse:9000
       - CLICKHOUSE_URL=http://langfuse-clickhouse:8123
-      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-beehAIve_atlanclaw}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
       - LANGFUSE_S3_EVENT_UPLOAD_ENABLED=false
       - LANGFUSE_INGESTION_QUEUE_PROCESSING_CONCURRENCY=1

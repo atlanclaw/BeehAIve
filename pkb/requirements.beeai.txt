@@ -7,4 +7,3 @@ opentelemetry-sdk>=1.24.0
 opentelemetry-exporter-otlp-proto-grpc>=1.24.0
 opentelemetry-api>=1.24.0
 # BeeAI framework
-bee-agent-framework>=0.1.0
